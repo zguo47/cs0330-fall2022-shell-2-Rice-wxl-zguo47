@@ -178,8 +178,6 @@ int main() {
         for (int j = 0; argv[j] != NULL; j++) {
             size_argv++;
         }
-
-
         // command exit
         if (strcmp(argv[0], "exit") == 0) {
             exit(0);
@@ -255,11 +253,11 @@ int main() {
                     perror("tcsetpgrp");
                     exit(1);
                 }
-                signal(SIGINT, SIG_DFL);
-                signal(SIGTSTP, SIG_DFL);
-                signal(SIGTTOU, SIG_DFL); 
             }
 
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGTTOU, SIG_DFL); 
 
 
             // handling redirection. Note that the maximum size of
@@ -330,12 +328,12 @@ int main() {
 
         // Parent Process continues
         if (strcmp(argv[size_argv-1], "&") == 0){
-            wait_status = waitpid(curr_child_pid, &status, WNOHANG);
+            wait_status = waitpid(curr_child_pid, &status, WNOHANG | WUNTRACED);
             // if (WIFEXITED(status)){
-            // printf("[%d](%d) terminated with exit status %d\n", size_j, getpid(), WEXITSTATUS(status));
+            // printf("[%d](%d) terminated with exit status %d\n", size_j, curr_child_pid, WEXITSTATUS(status));
             // }
         } else {
-            wait_status = waitpid(-1, &status, WUNTRACED);
+            wait_status = waitpid(-1, &status, WUNTRACED | WCONTINUED);
             if (tcsetpgrp(0, getpgrp()) == -1){
             perror("tcsetpgrp");
             exit(1);
@@ -358,11 +356,9 @@ int main() {
             printf("[%d](%d) terminated by signal %d\n", size_j, curr_child_pid, WTERMSIG(status));
         }
 
-
-
-        // if (WIFCONTINUED(status) == 0) {
-        //     printf("[%d](%d) resumed \n", size_j, getpid());
-        // }
+        if (WIFCONTINUED(status) == 0) {
+            printf("[%d](%d) resumed \n", size_j, getpid());
+        }
 
 
     }
