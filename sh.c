@@ -328,12 +328,12 @@ int main() {
 
         // Parent Process continues
         if (strcmp(argv[size_argv-1], "&") == 0){
-            wait_status = waitpid(curr_child_pid, &status, WNOHANG | WUNTRACED);
+            wait_status = waitpid(curr_child_pid, &status, WNOHANG);
             // if (WIFEXITED(status)){
             // printf("[%d](%d) terminated with exit status %d\n", size_j, curr_child_pid, WEXITSTATUS(status));
             // }
         } else {
-            wait_status = waitpid(-1, &status, WUNTRACED | WCONTINUED);
+            wait_status = waitpid(-1, &status, WUNTRACED);
             if (tcsetpgrp(0, getpgrp()) == -1){
             perror("tcsetpgrp");
             exit(1);
@@ -356,9 +356,9 @@ int main() {
             printf("[%d](%d) terminated by signal %d\n", size_j, curr_child_pid, WTERMSIG(status));
         }
 
-        if (WIFCONTINUED(status) == 0) {
-            printf("[%d](%d) resumed \n", size_j, getpid());
-        }
+        // if (WIFCONTINUED(status)) {
+        //     printf("[%d](%d) resumed \n", size_j, getpid());
+        // }
 
 
     }
