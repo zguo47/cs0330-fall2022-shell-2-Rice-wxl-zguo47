@@ -1,3 +1,4 @@
+#include "./jobs.h"
 #include <fcntl.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -122,6 +123,9 @@ int parse(char buffer[1024], char *tokens[512], char *argv[512],
 int main() {
     // used for saving the value returned from read
     ssize_t bytesRead;
+    job_list_t *j_list = init_job_list();
+    int size_j = 0;
+    pid_t curr_child_pid;
 
     while (1) {
 #ifdef PROMPT
@@ -168,6 +172,12 @@ int main() {
             }
         }
 
+        int size_argv = 0;
+        for (int j = 0; argv[j] != NULL; j++) {
+            size_argv++;
+        }
+
+
         // command exit
         if (strcmp(argv[0], "exit") == 0) {
             exit(0);
@@ -175,19 +185,30 @@ int main() {
 
         // child process
         if (fork() == 0) {
-            if (setpgid(getpgrp(), getpid()) == -1){
-                perror("setpgid");
-                exit(1);
-            }
 
-            if (tcsetpgrp(0, getpgrp()) == -1){
-                perror("tcsetpgrp");
-                exit(1);
+            if (strcmp(argv[size_argv-1], "&") == 0){
+                size_j += 1;
+                add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
+                printf("[%d](%d)\n", size_j, getpid());  
+
+            }
+            else {
+                if (setpgid(getpid(),getpgrp()) == -1){
+                    perror("setpgid");
+                    exit(1);
+                }
+
+                if (tcsetpgrp(0, getpgrp()) == -1){
+                    perror("tcsetpgrp");
+                    exit(1);
+                }
+            curr_child_pid = getpid();
             }
 
             signal(SIGINT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
             signal(SIGTTOU, SIG_DFL);
+            
             
             // handling redirection. Note that the maximum size of
             // redirect is 4.
@@ -284,7 +305,12 @@ int main() {
                         exit(1);
                     }
                 }
-            } else {
+            } 
+            else if (strcmp(argv[0], "jobs") == 0){
+                jobs(j_list);
+            }
+
+            else {
                 // handling all other commands using execv() system call
                 char *full_name = argv[0];
                 // extracting the binary name
@@ -295,13 +321,38 @@ int main() {
                 perror("execv");
                 exit(1);
             }
+            remove_job_pid(j_list, getpid());
             exit(0);
         }
 
+
         // Parent Process continues
-        if (wait(0) == -1) {
+        int wait_status;
+        int status;
+        if (strcmp(argv[size_argv-1], "&") == 0){
+            wait_status = waitpid(0, &status, WNOHANG);
+        } else {
+            wait_status = waitpid(-1, &status, WUNTRACED);
+        }
+
+        if (wait_status == -1) {
             perror("wait");
             continue;
+        }
+
+        if (WIFSTOPPED(status) == 0){
+            size_j += 1;
+            add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
+            printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), SIGTSTP);  
+        }
+
+        // if (WIFCONTINUED(status) == 0) {
+        //     printf("[%d](%d) resumed \n", size_j, getpid());
+        // }
+
+        if (tcsetpgrp(0, getpgrp()) == -1){
+                perror("tcsetpgrp");
+                exit(1);
         }
     }
     return 0;
