@@ -113,6 +113,50 @@ int parse(char buffer[1024], char *tokens[512], char *argv[512],
     return 0;
 }
 
+// bg job reaping
+int reap(job_list_t *j_list, int status){
+
+    pid_t pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
+
+    if (pid == -1){
+        perror("wait");
+        return 1;
+        }
+    else if (pid == 0){
+        return 0;
+    }
+    else {
+        // background job suspended
+        if (WIFSTOPPED(status)){
+            update_job_pid(j_list, pid, STOPPED);
+            printf("[%d](%d) suspended by signal %d\n", get_job_jid(j_list, pid), pid, WSTOPSIG(status));  
+        }
+        
+        // bg job continued
+        if (WIFCONTINUED(status)) {
+            update_job_pid(j_list, pid, RUNNING);
+            printf("[%d](%d) resumed \n", get_job_jid(j_list, pid), pid);
+        }
+
+        // bg job terminated by signal
+        if (WIFSIGNALED(status)){
+            remove_job_pid(j_list, pid);
+            printf("[%d](%d) terminated by signal %d\n", get_job_jid(j_list, pid), pid, WTERMSIG(status));
+        }
+
+        // bg job exit normally
+        if (WIFEXITED(status)){
+            remove_job_pid(j_list, pid);
+            printf("[%d](%d) terminated with exit status %d\n", get_job_jid(j_list, pid), pid, WEXITSTATUS(status));
+            }
+        
+        return 0;
+    }
+        
+}
+
+
+
 /*
  * main()
  *
@@ -126,7 +170,6 @@ int main() {
     job_list_t *j_list = init_job_list();
     int size_j = 0;
     pid_t curr_child_pid;
-    int wait_status;
     int status;
 
     while (1) {
@@ -166,6 +209,7 @@ int main() {
             continue;
         } else if (bytesRead == 0) {
             // the case where user inputs nothing and hits Command D
+            cleanup_job_list(j_list);
             exit(1);
         } else {
             // handling the error produced by parse()
@@ -178,14 +222,19 @@ int main() {
         for (int j = 0; argv[j] != NULL; j++) {
             size_argv++;
         }
-        // command exit
-        if (strcmp(argv[0], "exit") == 0) {
-            exit(0);
-        }
         if (strcmp(argv[size_argv-1], "&") == 0){
             size_j += 1;
             add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
         }
+
+
+
+        // command exit
+        if (strcmp(argv[0], "exit") == 0) {
+            cleanup_job_list(j_list);
+            exit(0);
+        }
+
         if (strcmp(argv[0], "cd") == 0) {
                 // no file
                 if (argv[1] == NULL) {
@@ -196,11 +245,9 @@ int main() {
                         strcat(strcat(getcwd(buf, sizeof(buf)), "/"), argv[1]));
                     if (cd == -1) {
                         perror("cd");
-                        exit(1);
-                    } else {
-                        continue;
-                    }
+                    } 
                 }
+                continue;
             }
 
             // command ln
@@ -230,6 +277,7 @@ int main() {
                 }
                 continue;
             } 
+
             else if (strcmp(argv[0], "jobs") == 0){
                 jobs(j_list);
                 continue;
@@ -309,6 +357,7 @@ int main() {
                     }
                 }
             }
+
             // handling all other commands using execv() system call
             char *full_name = argv[0];
             // extracting the binary name
@@ -318,48 +367,38 @@ int main() {
             execv(full_name, argv);
             perror("execv");
             exit(1);
-
-            remove_job_pid(j_list, getpid());
-            
-            exit(0);
         }
 
 
         // Parent Process continues
         if (strcmp(argv[size_argv-1], "&") == 0){
-            wait_status = waitpid(curr_child_pid, &status, WNOHANG);
-            // if (WIFEXITED(status)){
-            // printf("[%d](%d) terminated with exit status %d\n", size_j, curr_child_pid, WEXITSTATUS(status));
-            // }
+            int reap_return = reap(j_list, status);
+            if (reap_return == 1) {
+                continue;
+            }
         } else {
-            wait_status = waitpid(-1, &status, WUNTRACED);
+            pid_t pid = waitpid(curr_child_pid, &status, WUNTRACED);
+            if (pid == -1) {
+                perror("wait");
+                continue;
+            } else {
+                if (WIFSTOPPED(status)){
+                    size_j += 1;
+                    add_job(j_list, size_j, pid, STOPPED, argv[0]);
+                    printf("[%d](%d) suspended by signal %d\n", size_j, pid, WSTOPSIG(status));  
+                }
+                if (WIFSIGNALED(status)){
+                    printf("[%d](%d) terminated by signal %d\n", size_j+1, pid, WTERMSIG(status));
+                }
+            }
+
             if (tcsetpgrp(0, getpgrp()) == -1){
-            perror("tcsetpgrp");
-            exit(1);
+                perror("tcsetpgrp");
+                cleanup_job_list(j_list);
+                continue;            
             }
         }
-        if (wait_status == -1) {
-            perror("wait");
-            continue;
-        }
-
-        if (WIFSTOPPED(status)){
-            size_j += 1;
-            add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-            printf("[%d](%d) suspended by signal %d\n", size_j, curr_child_pid, WSTOPSIG(status));  
-        }
-
-        if (WIFSIGNALED(status)){
-            size_j += 1;
-            add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-            printf("[%d](%d) terminated by signal %d\n", size_j, curr_child_pid, WTERMSIG(status));
-        }
-
-        // if (WIFCONTINUED(status)) {
-        //     printf("[%d](%d) resumed \n", size_j, getpid());
-        // }
-
-
     }
+    cleanup_job_list(j_list);
     return 0;
 }
