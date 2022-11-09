@@ -126,6 +126,8 @@ int main() {
     job_list_t *j_list = init_job_list();
     int size_j = 0;
     pid_t curr_child_pid;
+    int wait_status;
+    int status;
 
     while (1) {
 #ifdef PROMPT
@@ -186,33 +188,80 @@ int main() {
             size_j += 1;
             add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
         }
+        if (strcmp(argv[0], "cd") == 0) {
+                // no file
+                if (argv[1] == NULL) {
+                    fprintf(stderr, "cd: syntax error \n");
+                } else {
+                    // using chdir() system call
+                    int cd = chdir(
+                        strcat(strcat(getcwd(buf, sizeof(buf)), "/"), argv[1]));
+                    if (cd == -1) {
+                        perror("cd");
+                        exit(1);
+                    } else {
+                        continue;
+                    }
+                }
+            }
 
+            // command ln
+            else if (strcmp(argv[0], "ln") == 0) {
+                // no file
+                if (argv[1] == NULL || argv[2] == NULL) {
+                    fprintf(stderr, "ln: syntax error \n");
+                } else {
+                    // using link() system call
+                    if (link(argv[1], argv[2]) == -1) {
+                        perror("ln");
+                    }
+                }
+                continue;
+            }
 
+            // command rm
+            else if (strcmp(argv[0], "rm") == 0) {
+                // no file
+                if (argv[1] == NULL) {
+                    fprintf(stderr, "rm: syntax error \n");
+                } else {
+                    // using unlink() system call
+                    if (unlink(argv[1]) == -1) {
+                        perror("rm");
+                    }
+                }
+                continue;
+            } 
+            else if (strcmp(argv[0], "jobs") == 0){
+                jobs(j_list);
+                continue;
+            }
+
+        curr_child_pid = fork();
         // child process
-        if (fork() == 0) {
+        if (curr_child_pid == 0) {
 
-        if (strcmp(argv[size_argv-1], "&") == 0){
-            argv[size_argv-1] = NULL;
-            printf("[%d](%d)\n", size_j, getpid());  
+            if (strcmp(argv[size_argv-1], "&") == 0){
+                argv[size_argv-1] = NULL;
+                printf("[%d](%d)\n", size_j, getpid());  
 
-        }else {
-            if (setpgid(getpid(),getpgrp()) == -1){
+            }else {
+                if (setpgid(getpid(),getpgrp()) == -1){
                     perror("setpgid");
                     exit(1);
-            }
+                }
 
-            if (tcsetpgrp(0, getpgrp()) == -1){
+                if (tcsetpgrp(0, getpgrp()) == -1){
                     perror("tcsetpgrp");
                     exit(1);
+                }
+                signal(SIGINT, SIG_DFL);
+                signal(SIGTSTP, SIG_DFL);
+                signal(SIGTTOU, SIG_DFL); 
             }
-            curr_child_pid = getpid();
-        }
 
-        signal(SIGINT, SIG_DFL);
-        signal(SIGTSTP, SIG_DFL);
-        signal(SIGTTOU, SIG_DFL);
-            
-            
+
+
             // handling redirection. Note that the maximum size of
             // redirect is 4.
             for (int i = 0; i < 4; i += 2) {
@@ -263,67 +312,15 @@ int main() {
                     }
                 }
             }
-
-            // command cd
-            if (strcmp(argv[0], "cd") == 0) {
-                // no file
-                if (argv[1] == NULL) {
-                    fprintf(stderr, "cd: syntax error \n");
-                } else {
-                    // using chdir() system call
-                    int cd = chdir(
-                        strcat(strcat(getcwd(buf, sizeof(buf)), "/"), argv[1]));
-                    if (cd == -1) {
-                        perror("cd");
-                        exit(1);
-                    } else {
-                        continue;
-                    }
-                }
-            }
-
-            // command ln
-            else if (strcmp(argv[0], "ln") == 0) {
-                // no file
-                if (argv[1] == NULL || argv[2] == NULL) {
-                    fprintf(stderr, "ln: syntax error \n");
-                } else {
-                    // using link() system call
-                    if (link(argv[1], argv[2]) == -1) {
-                        perror("ln");
-                        exit(1);
-                    }
-                }
-            }
-
-            // command rm
-            else if (strcmp(argv[0], "rm") == 0) {
-                // no file
-                if (argv[1] == NULL) {
-                    fprintf(stderr, "rm: syntax error \n");
-                } else {
-                    // using unlink() system call
-                    if (unlink(argv[1]) == -1) {
-                        perror("rm");
-                        exit(1);
-                    }
-                }
-            } 
-            else if (strcmp(argv[0], "jobs") == 0){
-                jobs(j_list);
-            }
-
-            else {
-                // handling all other commands using execv() system call
-                char *full_name = argv[0];
-                // extracting the binary name
-                if (strrchr(argv[0], '/') != NULL) {
+            // handling all other commands using execv() system call
+            char *full_name = argv[0];
+            // extracting the binary name
+            if (strrchr(argv[0], '/') != NULL) {
                     argv[0] = strrchr(argv[0], '/') + 1;
-                }
-                execv(full_name, argv);
-                perror("execv");
-                exit(1);
             }
+            execv(full_name, argv);
+            perror("execv");
+            exit(1);
 
             remove_job_pid(j_list, getpid());
             
@@ -332,10 +329,8 @@ int main() {
 
 
         // Parent Process continues
-        int wait_status;
-        int status;
         if (strcmp(argv[size_argv-1], "&") == 0){
-            wait_status = waitpid(0, &status, WNOHANG);
+            wait_status = waitpid(curr_child_pid, &status, WNOHANG);
             // if (WIFEXITED(status)){
             // printf("[%d](%d) terminated with exit status %d\n", size_j, getpid(), WEXITSTATUS(status));
             // }
@@ -354,13 +349,13 @@ int main() {
         if (WIFSTOPPED(status)){
             size_j += 1;
             add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-            printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), WSTOPSIG(status));  
+            printf("[%d](%d) suspended by signal %d\n", size_j, curr_child_pid, WSTOPSIG(status));  
         }
 
         if (WIFSIGNALED(status)){
             size_j += 1;
             add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-            printf("[%d](%d) terminated by signal %d\n", size_j, getpid(), WTERMSIG(status));
+            printf("[%d](%d) terminated by signal %d\n", size_j, curr_child_pid, WTERMSIG(status));
         }
 
 
