@@ -184,12 +184,15 @@ int main() {
         }
         if (strcmp(argv[size_argv-1], "&") == 0){
             size_j += 1;
+            add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
         }
+
+
         // child process
         if (fork() == 0) {
 
         if (strcmp(argv[size_argv-1], "&") == 0){
-            add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
+            argv[size_argv-1] = NULL;
             printf("[%d](%d)\n", size_j, getpid());  
 
         }else {
@@ -204,9 +207,10 @@ int main() {
             }
             curr_child_pid = getpid();
         }
-            signal(SIGINT, SIG_DFL);
-            signal(SIGTSTP, SIG_DFL);
-            signal(SIGTTOU, SIG_DFL);
+
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+        signal(SIGTTOU, SIG_DFL);
             
             
             // handling redirection. Note that the maximum size of
@@ -331,9 +335,9 @@ int main() {
         int wait_status;
         int status;
         if (strcmp(argv[size_argv-1], "&") == 0){
-            wait_status = waitpid(0, &status, 0);
+            wait_status = waitpid(0, &status, WNOHANG);
         } else {
-            wait_status = waitpid(-1, &status, 0);
+            wait_status = waitpid(-1, &status, WUNTRACED);
             if (tcsetpgrp(0, getpgrp()) == -1){
             perror("tcsetpgrp");
             exit(1);
