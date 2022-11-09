@@ -125,7 +125,7 @@ int main() {
     ssize_t bytesRead;
     job_list_t *j_list = init_job_list();
     int size_j = 0;
-    // pid_t curr_child_pid;
+    pid_t curr_child_pid;
 
     while (1) {
 #ifdef PROMPT
@@ -182,30 +182,28 @@ int main() {
         if (strcmp(argv[0], "exit") == 0) {
             exit(0);
         }
-
+        if (strcmp(argv[size_argv-1], "&") == 0){
+            size_j += 1;
+        }
         // child process
         if (fork() == 0) {
 
-            if (strcmp(argv[size_argv-1], "&") == 0){
-                argv[size_argv - 1] = NULL;
-                size_j += 1;
-                add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
-                printf("[%d](%d)\n", size_j, getpid());  
+        if (strcmp(argv[size_argv-1], "&") == 0){
+            add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
+            printf("[%d](%d)\n", size_j, getpid());  
 
-            }
-            else {
-                if (setpgid(getpid(),getpgrp()) == -1){
+        }else {
+            if (setpgid(getpid(),getpgrp()) == -1){
                     perror("setpgid");
                     exit(1);
-                }
-
-                if (tcsetpgrp(0, getpgrp()) == -1){
-                    perror("tcsetpgrp");
-                    exit(1);
-                }
-            // curr_child_pid = getpid();
             }
 
+            if (tcsetpgrp(0, getpgrp()) == -1){
+                    perror("tcsetpgrp");
+                    exit(1);
+            }
+            curr_child_pid = getpid();
+        }
             signal(SIGINT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
             signal(SIGTTOU, SIG_DFL);
@@ -333,7 +331,7 @@ int main() {
         int wait_status;
         int status;
         if (strcmp(argv[size_argv-1], "&") == 0){
-            wait_status = waitpid(0, &status, WNOHANG);
+            wait_status = waitpid(0, &status, 0);
         } else {
             wait_status = waitpid(-1, &status, 0);
             if (tcsetpgrp(0, getpgrp()) == -1){
@@ -347,11 +345,11 @@ int main() {
             continue;
         }
 
-        // if (WIFSTOPPED(status) == 0){
-        //     size_j += 1;
-        //     add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-        //     printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), SIGTSTP);  
-        // }
+        if (WIFSTOPPED(status)){
+            size_j += 1;
+            add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
+            printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), SIGTSTP);  
+        }
 
         // if (WIFCONTINUED(status) == 0) {
         //     printf("[%d](%d) resumed \n", size_j, getpid());
