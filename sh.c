@@ -336,6 +336,9 @@ int main() {
         int status;
         if (strcmp(argv[size_argv-1], "&") == 0){
             wait_status = waitpid(0, &status, WNOHANG);
+            // if (WIFEXITED(status)){
+            // printf("[%d](%d) terminated with exit status %d\n", size_j, getpid(), WEXITSTATUS(status));
+            // }
         } else {
             wait_status = waitpid(-1, &status, WUNTRACED);
             if (tcsetpgrp(0, getpgrp()) == -1){
@@ -343,7 +346,6 @@ int main() {
             exit(1);
             }
         }
-
         if (wait_status == -1) {
             perror("wait");
             continue;
@@ -352,8 +354,16 @@ int main() {
         if (WIFSTOPPED(status)){
             size_j += 1;
             add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-            printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), SIGTSTP);  
+            printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), WSTOPSIG(status));  
         }
+
+        if (WIFSIGNALED(status)){
+            size_j += 1;
+            add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
+            printf("[%d](%d) terminated by signal %d\n", size_j, getpid(), WTERMSIG(status));
+        }
+
+
 
         // if (WIFCONTINUED(status) == 0) {
         //     printf("[%d](%d) resumed \n", size_j, getpid());
