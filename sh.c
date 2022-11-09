@@ -114,18 +114,14 @@ int parse(char buffer[1024], char *tokens[512], char *argv[512],
 }
 
 // bg job reaping
-int reap(job_list_t *j_list, int status){
-
-    pid_t pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
-
-    if (pid == -1){
-        perror("wait");
-        return 1;
+int reap(job_list_t *j_list){
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED)) != 0) {
+        if (pid == -1){
+            perror("wait");
+            return 1;
         }
-    else if (pid == 0){
-        return 0;
-    }
-    else {
         // background job suspended
         if (WIFSTOPPED(status)){
             update_job_pid(j_list, pid, STOPPED);
@@ -150,9 +146,8 @@ int reap(job_list_t *j_list, int status){
             printf("[%d](%d) terminated with exit status %d\n", get_job_jid(j_list, pid), pid, WEXITSTATUS(status));
             }
         
-        return 0;
     }
-        
+    return 0;        
 }
 
 
@@ -286,7 +281,6 @@ int main() {
         curr_child_pid = fork();
         // child process
         if (curr_child_pid == 0) {
-
             if (strcmp(argv[size_argv-1], "&") == 0){
                 argv[size_argv-1] = NULL;
                 printf("[%d](%d)\n", size_j, getpid());  
@@ -301,10 +295,11 @@ int main() {
                     perror("tcsetpgrp");
                     exit(1);
                 }
-                signal(SIGINT, SIG_DFL);
-                signal(SIGTSTP, SIG_DFL);
-                signal(SIGTTOU, SIG_DFL); 
+
             }
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGTTOU, SIG_DFL); 
 
 
             // handling redirection. Note that the maximum size of
@@ -372,7 +367,7 @@ int main() {
 
         // Parent Process continues
         if (strcmp(argv[size_argv-1], "&") == 0){
-            int reap_return = reap(j_list, status);
+            int reap_return = reap(j_list);
             if (reap_return == 1) {
                 continue;
             }
