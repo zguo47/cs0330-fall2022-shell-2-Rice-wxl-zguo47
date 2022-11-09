@@ -253,11 +253,10 @@ int main() {
                     perror("tcsetpgrp");
                     exit(1);
                 }
+                signal(SIGINT, SIG_DFL);
+                signal(SIGTSTP, SIG_DFL);
+                signal(SIGTTOU, SIG_DFL); 
             }
-
-            signal(SIGINT, SIG_DFL);
-            signal(SIGTSTP, SIG_DFL);
-            signal(SIGTTOU, SIG_DFL); 
 
 
             // handling redirection. Note that the maximum size of
