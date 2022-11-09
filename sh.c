@@ -125,7 +125,7 @@ int main() {
     ssize_t bytesRead;
     job_list_t *j_list = init_job_list();
     int size_j = 0;
-    pid_t curr_child_pid;
+    // pid_t curr_child_pid;
 
     while (1) {
 #ifdef PROMPT
@@ -187,6 +187,7 @@ int main() {
         if (fork() == 0) {
 
             if (strcmp(argv[size_argv-1], "&") == 0){
+                argv[size_argv - 1] = NULL;
                 size_j += 1;
                 add_job(j_list, size_j, getpid(), RUNNING, argv[0]);
                 printf("[%d](%d)\n", size_j, getpid());  
@@ -202,7 +203,7 @@ int main() {
                     perror("tcsetpgrp");
                     exit(1);
                 }
-            curr_child_pid = getpid();
+            // curr_child_pid = getpid();
             }
 
             signal(SIGINT, SIG_DFL);
@@ -321,7 +322,9 @@ int main() {
                 perror("execv");
                 exit(1);
             }
+
             remove_job_pid(j_list, getpid());
+            
             exit(0);
         }
 
@@ -332,7 +335,11 @@ int main() {
         if (strcmp(argv[size_argv-1], "&") == 0){
             wait_status = waitpid(0, &status, WNOHANG);
         } else {
-            wait_status = waitpid(-1, &status, WUNTRACED);
+            wait_status = waitpid(-1, &status, 0);
+            if (tcsetpgrp(0, getpgrp()) == -1){
+            perror("tcsetpgrp");
+            exit(1);
+            }
         }
 
         if (wait_status == -1) {
@@ -340,20 +347,17 @@ int main() {
             continue;
         }
 
-        if (WIFSTOPPED(status) == 0){
-            size_j += 1;
-            add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
-            printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), SIGTSTP);  
-        }
+        // if (WIFSTOPPED(status) == 0){
+        //     size_j += 1;
+        //     add_job(j_list, size_j, curr_child_pid, STOPPED, argv[0]);
+        //     printf("[%d](%d) suspended by signal %d\n", size_j, getpid(), SIGTSTP);  
+        // }
 
         // if (WIFCONTINUED(status) == 0) {
         //     printf("[%d](%d) resumed \n", size_j, getpid());
         // }
 
-        if (tcsetpgrp(0, getpgrp()) == -1){
-                perror("tcsetpgrp");
-                exit(1);
-        }
+
     }
     return 0;
 }
