@@ -246,7 +246,7 @@ int main() {
                 printf("[%d](%d)\n", size_j, getpid());  
 
             }else {
-                if (setpgid(getpid(),getpgrp()) == -1){
+                if (setpgid(getpid(),getpid()) == -1){
                     perror("setpgid");
                     exit(1);
                 }
