@@ -142,14 +142,44 @@ void reap(job_list_t *list){
             printf("[%d](%d) terminated with exit status %d\n", get_job_jid(list, pid), pid, WEXITSTATUS(status_background));
             remove_job_pid(list, pid);
             }
-    }
-    // if (pid == -1){
-    //     perror("wait");
-    //     return 1;
-    // }
-    // return 0;        
+    }      
 }
 
+void bg(char *job_id, job_list_t *list){
+    int jid = atoi(job_id);
+    pid_t id = get_job_pid(list, jid);
+    if (id != -1){
+        // update_job_pid(list, id, RUNNING);
+        if (kill(-id, SIGCONT) == -1){
+            perror("Kill");
+        }
+    }else{
+        printf("job not found\n");
+    }
+}
+
+void fg(char *job_id, job_list_t *list){
+    int jid = atoi(job_id);
+    pid_t id = get_job_pid(list, jid);
+    if (id != -1){
+        // update_job_pid(list, id, RUNNING);
+        if (setpgid(id, id) == -1){
+                perror("setpgid");
+        }
+        if (tcsetpgrp(0, id) == -1){
+                perror("tcsetpgrp");
+        }
+        if (kill(-id, SIGCONT) == -1){
+            perror("Kill");
+        }
+
+    }else{
+        printf("job not found\n");
+    }
+    // if (tcsetpgrp(0, getpgrp()) == -1){
+    //     perror("tcsetpgrp");
+    // }
+}
 
 
 /*
@@ -173,9 +203,6 @@ int main() {
 
     while (1) {
         reap(j_list);
-        // if (reap_return == 1) {
-        //         continue;
-        // }
 #ifdef PROMPT
         if (printf("33sh> ") < 0) {
             fprintf(stderr, "error when printing prompt.\n");
@@ -227,7 +254,7 @@ int main() {
             exit(0);
         }
 
-        if (strcmp(argv[0], "cd") == 0) {
+            if (strcmp(argv[0], "cd") == 0) {
                 // no file
                 if (argv[1] == NULL) {
                     fprintf(stderr, "cd: syntax error \n");
@@ -272,6 +299,26 @@ int main() {
 
             else if (strcmp(argv[0], "jobs") == 0){
                 jobs(j_list);
+                continue;
+            }
+
+            else if (strcmp(argv[0], "bg") == 0){
+                char *second_arg = argv[1];
+                if (second_arg[0] == 37){
+                    bg(&second_arg[1], j_list);
+                }else{
+                fprintf(stderr, "bg: syntax error \n");
+                }
+                continue;
+            }
+
+            else if (strcmp(argv[0], "fg") == 0){
+                char *second_arg = argv[1];
+                if (second_arg[0] == 37){
+                    fg(&second_arg[1], j_list);
+                }else{
+                fprintf(stderr, "fg: syntax error \n");
+                }
                 continue;
             }
 
@@ -367,12 +414,6 @@ int main() {
 
 
         // Parent Process continues
-        // if (strcmp(argv[size_argv-1], "&") == 0){
-        //     int reap_return = reap(j_list);
-        //     if (reap_return == 1) {
-        //         continue;
-        //     }
-        // }else{
         if (strcmp(argv[size_argv-1], "&") != 0){ 
             pid_t pid = waitpid(curr_child_pid, &status, WUNTRACED);
             if (pid == -1) {
@@ -391,11 +432,9 @@ int main() {
 
             if (tcsetpgrp(0, getpgrp()) == -1){
                 perror("tcsetpgrp");
-                cleanup_job_list(j_list);
                 continue;            
             }
         }
-        // }
     }
     cleanup_job_list(j_list);
     return 0;
