@@ -176,9 +176,9 @@ void fg(char *job_id, job_list_t *list){
     }else{
         printf("job not found\n");
     }
-    // if (tcsetpgrp(0, getpgrp()) == -1){
-    //     perror("tcsetpgrp");
-    // }
+    if (tcsetpgrp(0, getpgrp()) == -1){
+        perror("tcsetpgrp");
+    }
 }
 
 
