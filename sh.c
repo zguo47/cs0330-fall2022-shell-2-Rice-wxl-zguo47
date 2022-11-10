@@ -162,22 +162,36 @@ void fg(char *job_id, job_list_t *list){
     int jid = atoi(job_id);
     pid_t id = get_job_pid(list, jid);
     if (id != -1){
-        // update_job_pid(list, id, RUNNING);
-        if (setpgid(id, id) == -1){
-                perror("setpgid");
-        }
-        if (tcsetpgrp(0, id) == -1){
+        if (tcsetpgrp(0, getpgid(id)) == -1){
                 perror("tcsetpgrp");
         }
-        if (kill(-id, SIGCONT) == -1){
+        if (kill(-getpgid(id), SIGCONT) == -1){
             perror("Kill");
         }
 
     }else{
         printf("job not found\n");
     }
-    if (tcsetpgrp(0, getpgrp()) == -1){
-        perror("tcsetpgrp");
+
+    int status;
+    pid_t pid = waitpid(id, &status, WUNTRACED);
+    if (pid != -1) {
+            if (WIFSTOPPED(status)){
+                    update_job_pid(list, pid, STOPPED);
+                    printf("[%d](%d) suspended by signal %d\n", get_job_jid(list, pid), pid, WSTOPSIG(status));  
+                }
+            if (WIFSIGNALED(status)){
+                printf("[%d](%d) terminated by signal %d\n", get_job_jid(list, id), id, WTERMSIG(status));
+                remove_job_pid(list, id);
+                }
+
+            if (WIFEXITED(status)){
+                remove_job_pid(list, id);
+            }
+
+            if (tcsetpgrp(0, getpgrp()) == -1){
+                perror("tcsetpgrp");
+            }
     }
 }
 
