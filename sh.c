@@ -1,12 +1,12 @@
-#include "./jobs.h"
 #include <fcntl.h>
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <signal.h>
+#include "./jobs.h"
 
 /*
  * parse()
@@ -114,17 +114,18 @@ int parse(char buffer[1024], char *tokens[512], char *argv[512],
 }
 
 // bg job reaping
-void reap(job_list_t *list){
+void reap(job_list_t *list) {
     int status_background;
     pid_t pid;
-    while ((pid = waitpid(-1, &status_background, WNOHANG | WUNTRACED | WCONTINUED)) > 0) {
-
+    while ((pid = waitpid(-1, &status_background,
+                          WNOHANG | WUNTRACED | WCONTINUED)) > 0) {
         // background job suspended
-        if (WIFSTOPPED(status_background)){
-            printf("[%d](%d) suspended by signal %d\n", get_job_jid(list, pid), pid, WSTOPSIG(status_background));
-            update_job_pid(list, pid, STOPPED);  
+        if (WIFSTOPPED(status_background)) {
+            printf("[%d](%d) suspended by signal %d\n", get_job_jid(list, pid),
+                   pid, WSTOPSIG(status_background));
+            update_job_pid(list, pid, STOPPED);
         }
-        
+
         // bg job continued
         if (WIFCONTINUED(status_background)) {
             printf("[%d](%d) resumed \n", get_job_jid(list, pid), pid);
@@ -132,69 +133,71 @@ void reap(job_list_t *list){
         }
 
         // bg job terminated by signal
-        if (WIFSIGNALED(status_background)){
-            printf("[%d](%d) terminated by signal %d\n", get_job_jid(list, pid), pid, WTERMSIG(status_background));
+        if (WIFSIGNALED(status_background)) {
+            printf("[%d](%d) terminated by signal %d\n", get_job_jid(list, pid),
+                   pid, WTERMSIG(status_background));
             remove_job_pid(list, pid);
         }
 
         // bg job exit normally
-        if (WIFEXITED(status_background)){
-            printf("[%d](%d) terminated with exit status %d\n", get_job_jid(list, pid), pid, WEXITSTATUS(status_background));
+        if (WIFEXITED(status_background)) {
+            printf("[%d](%d) terminated with exit status %d\n",
+                   get_job_jid(list, pid), pid, WEXITSTATUS(status_background));
             remove_job_pid(list, pid);
-            }
-    }      
+        }
+    }
 }
 
-void bg(char *job_id, job_list_t *list){
+void bg(char *job_id, job_list_t *list) {
     int jid = atoi(job_id);
     pid_t id = get_job_pid(list, jid);
-    if (id != -1){
-        // update_job_pid(list, id, RUNNING);
-        if (kill(-id, SIGCONT) == -1){
+    if (id != -1) {
+        if (kill(-id, SIGCONT) == -1) {
             perror("Kill");
         }
-    }else{
+    } else {
         printf("job not found\n");
     }
 }
 
-void fg(char *job_id, job_list_t *list){
+void fg(char *job_id, job_list_t *list) {
     int jid = atoi(job_id);
     pid_t id = get_job_pid(list, jid);
-    if (id != -1){
-        if (tcsetpgrp(0, getpgid(id)) == -1){
-                perror("tcsetpgrp");
+    if (id != -1) {
+        if (tcsetpgrp(0, id) == -1) {
+            perror("tcsetpgrp");
         }
-        if (kill(-getpgid(id), SIGCONT) == -1){
+        if (kill(-id, SIGCONT) == -1) {
             perror("Kill");
         }
 
-    }else{
+    } else {
         printf("job not found\n");
     }
 
     int status;
     pid_t pid = waitpid(id, &status, WUNTRACED);
     if (pid != -1) {
-            if (WIFSTOPPED(status)){
-                    update_job_pid(list, pid, STOPPED);
-                    printf("[%d](%d) suspended by signal %d\n", get_job_jid(list, pid), pid, WSTOPSIG(status));  
-                }
-            if (WIFSIGNALED(status)){
-                printf("[%d](%d) terminated by signal %d\n", get_job_jid(list, id), id, WTERMSIG(status));
-                remove_job_pid(list, id);
-                }
+        if (WIFSTOPPED(status)) {
+            update_job_pid(list, pid, STOPPED);
+            printf("[%d](%d) suspended by signal %d\n", get_job_jid(list, pid),
+                   pid, WSTOPSIG(status));
+        }
+        if (WIFSIGNALED(status)) {
+            printf("[%d](%d) terminated by signal %d\n", get_job_jid(list, id),
+                   id, WTERMSIG(status));
+            remove_job_pid(list, id);
+        }
 
-            if (WIFEXITED(status)){
-                remove_job_pid(list, id);
-            }
+        if (WIFEXITED(status)) {
+            remove_job_pid(list, id);
+        }
 
-            if (tcsetpgrp(0, getpgrp()) == -1){
-                perror("tcsetpgrp");
-            }
+        if (tcsetpgrp(0, getpgrp()) == -1) {
+            perror("tcsetpgrp");
+        }
     }
 }
-
 
 /*
  * main()
@@ -240,7 +243,6 @@ int main() {
 
         char buf[1024];
         memset(buf, 0, 1024);
-       
 
         // reading from file descripter 0, which stores user input
         if ((bytesRead = read(0, buffer, 1024)) == -1) {
@@ -268,101 +270,100 @@ int main() {
             exit(0);
         }
 
-            if (strcmp(argv[0], "cd") == 0) {
-                // no file
-                if (argv[1] == NULL) {
-                    fprintf(stderr, "cd: syntax error \n");
-                 } else {
-                    // using chdir() system call
-                    int cd = chdir(
-                        strcat(strcat(getcwd(buf, sizeof(buf)), "/"), argv[1]));
-                    if (cd == -1) {
-                        perror("cd");
-                    } 
+        if (strcmp(argv[0], "cd") == 0) {
+            // no file
+            if (argv[1] == NULL) {
+                fprintf(stderr, "cd: syntax error \n");
+            } else {
+                // using chdir() system call
+                int cd = chdir(
+                    strcat(strcat(getcwd(buf, sizeof(buf)), "/"), argv[1]));
+                if (cd == -1) {
+                    perror("cd");
                 }
-                continue;
             }
+            continue;
+        }
 
-            // command ln
-            else if (strcmp(argv[0], "ln") == 0) {
-                // no file
-                if (argv[1] == NULL || argv[2] == NULL) {
-                    fprintf(stderr, "ln: syntax error \n");
-                } else {
-                    // using link() system call
-                    if (link(argv[1], argv[2]) == -1) {
-                        perror("ln");
-                    }
+        // command ln
+        else if (strcmp(argv[0], "ln") == 0) {
+            // no file
+            if (argv[1] == NULL || argv[2] == NULL) {
+                fprintf(stderr, "ln: syntax error \n");
+            } else {
+                // using link() system call
+                if (link(argv[1], argv[2]) == -1) {
+                    perror("ln");
                 }
-                continue;
             }
+            continue;
+        }
 
-            // command rm
-            else if (strcmp(argv[0], "rm") == 0) {
-                // no file
-                if (argv[1] == NULL) {
-                    fprintf(stderr, "rm: syntax error \n");
-                } else {
-                    // using unlink() system call
-                    if (unlink(argv[1]) == -1) {
-                        perror("rm");
-                    }
+        // command rm
+        else if (strcmp(argv[0], "rm") == 0) {
+            // no file
+            if (argv[1] == NULL) {
+                fprintf(stderr, "rm: syntax error \n");
+            } else {
+                // using unlink() system call
+                if (unlink(argv[1]) == -1) {
+                    perror("rm");
                 }
-                continue;
-            } 
-
-            else if (strcmp(argv[0], "jobs") == 0){
-                jobs(j_list);
-                continue;
             }
+            continue;
+        }
 
-            else if (strcmp(argv[0], "bg") == 0){
-                char *second_arg = argv[1];
-                if (second_arg[0] == 37){
-                    bg(&second_arg[1], j_list);
-                }else{
+        else if (strcmp(argv[0], "jobs") == 0) {
+            jobs(j_list);
+            continue;
+        }
+
+        else if (strcmp(argv[0], "bg") == 0) {
+            char *second_arg = argv[1];
+            if (second_arg[0] == 37) {
+                bg(&second_arg[1], j_list);
+            } else {
                 fprintf(stderr, "bg: syntax error \n");
-                }
-                continue;
             }
+            continue;
+        }
 
-            else if (strcmp(argv[0], "fg") == 0){
-                char *second_arg = argv[1];
-                if (second_arg[0] == 37){
-                    fg(&second_arg[1], j_list);
-                }else{
+        else if (strcmp(argv[0], "fg") == 0) {
+            char *second_arg = argv[1];
+            if (second_arg[0] == 37) {
+                fg(&second_arg[1], j_list);
+            } else {
                 fprintf(stderr, "fg: syntax error \n");
-                }
-                continue;
             }
+            continue;
+        }
 
         curr_child_pid = fork();
-        
-        if (strcmp(argv[size_argv-1], "&") == 0){
+
+        if (strcmp(argv[size_argv - 1], "&") == 0) {
             size_j += 1;
             add_job(j_list, size_j, curr_child_pid, RUNNING, argv[0]);
         }
         // child process
         if (curr_child_pid == 0) {
-            if (setpgid(getpid(),getpid()) == -1){
+            if (setpgid(getpid(), getpid()) == -1) {
                 perror("setpgid");
                 exit(1);
             }
 
-            if (strcmp(argv[size_argv-1], "&") == 0){
-                argv[size_argv-1] = NULL;
-                printf("[%d](%d)\n", size_j, getpid()); 
+            if (strcmp(argv[size_argv - 1], "&") == 0) {
+                argv[size_argv - 1] = NULL;
+                printf("[%d](%d)\n", size_j, getpid());
 
-            }else {
-                if (tcsetpgrp(0, getpgrp()) == -1){
+            } else {
+                if (tcsetpgrp(0, getpgrp()) == -1) {
                     perror("tcsetpgrp");
                     exit(1);
                 }
             }
             signal(SIGINT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
-            signal(SIGTTOU, SIG_DFL); 
-
+            signal(SIGTTOU, SIG_DFL);
 
             // handling redirection. Note that the maximum size of
             // redirect is 4.
@@ -419,34 +420,35 @@ int main() {
             char *full_name = argv[0];
             // extracting the binary name
             if (strrchr(argv[0], '/') != NULL) {
-                    argv[0] = strrchr(argv[0], '/') + 1;
+                argv[0] = strrchr(argv[0], '/') + 1;
             }
             execv(full_name, argv);
             perror("execv");
             exit(1);
         }
 
-
         // Parent Process continues
-        if (strcmp(argv[size_argv-1], "&") != 0){ 
+        if (strcmp(argv[size_argv - 1], "&") != 0) {
             pid_t pid = waitpid(curr_child_pid, &status, WUNTRACED);
             if (pid == -1) {
                 perror("wait");
                 continue;
             } else {
-                if (WIFSTOPPED(status)){
+                if (WIFSTOPPED(status)) {
                     size_j += 1;
                     add_job(j_list, size_j, pid, STOPPED, argv[0]);
-                    printf("[%d](%d) suspended by signal %d\n", size_j, pid, WSTOPSIG(status));  
+                    printf("[%d](%d) suspended by signal %d\n", size_j, pid,
+                           WSTOPSIG(status));
                 }
-                if (WIFSIGNALED(status)){
-                    printf("[%d](%d) terminated by signal %d\n", size_j+1, pid, WTERMSIG(status));
+                if (WIFSIGNALED(status)) {
+                    printf("[%d](%d) terminated by signal %d\n", size_j + 1,
+                           pid, WTERMSIG(status));
                 }
             }
 
-            if (tcsetpgrp(0, getpgrp()) == -1){
+            if (tcsetpgrp(0, getpgrp()) == -1) {
                 perror("tcsetpgrp");
-                continue;            
+                continue;
             }
         }
     }
