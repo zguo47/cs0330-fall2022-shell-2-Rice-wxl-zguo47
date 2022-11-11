@@ -113,7 +113,18 @@ int parse(char buffer[1024], char *tokens[512], char *argv[512],
     return 0;
 }
 
-// bg job reaping
+
+/*
+ * reap()
+ *
+ * - Description: reap the background processes. When there is a background 
+ * process experience a status change (i.e. be suspended), reap will record
+ * that change and handle it. 
+ *
+ * - Arguments: job_list_t *list: a pointer to the shell's job list which 
+ * contains all the background processes and suspended foreground processes.
+ *
+ */
 void reap(job_list_t *list) {
     int status_background;
     pid_t pid;
@@ -148,9 +159,21 @@ void reap(job_list_t *list) {
     }
 }
 
+/*
+ * bg()
+ *
+ * - Description: handle the built in command bg, which will resume the job 
+ * associated with the given jid, and runs it in the background. 
+ *
+ * - Arguments: char *job_id, a pointer to the jid for the job that the user 
+ * wants to resume; job_list_t *list, a pointer to the shell's job list which 
+ * contains all the background processes and suspended foreground processes.
+ *
+ */
 void bg(char *job_id, job_list_t *list) {
     int jid = atoi(job_id);
     pid_t id = get_job_pid(list, jid);
+    // the job exist in the job list.
     if (id != -1) {
         if (kill(-id, SIGCONT) == -1) {
             perror("Kill");
@@ -160,10 +183,23 @@ void bg(char *job_id, job_list_t *list) {
     }
 }
 
+/*
+ * fg()
+ *
+ * - Description: handle the built in command fg, which will resume the job
+ * associated with the given jid, and runs it in the foreground. 
+ *
+ * - Arguments: char *job_id, a pointer to the jid for the job that the user 
+ * wants to resume; job_list_t *list, a pointer to the shell's job list which 
+ * contains all the background processes and suspended foreground processes.
+ *
+ */
 void fg(char *job_id, job_list_t *list) {
     int jid = atoi(job_id);
     pid_t id = get_job_pid(list, jid);
+    // the job exist in the job list
     if (id != -1) {
+        // To enable to job to interact with the terminal.
         if (tcsetpgrp(0, id) == -1) {
             perror("tcsetpgrp");
         }
@@ -175,6 +211,7 @@ void fg(char *job_id, job_list_t *list) {
         printf("job not found\n");
     }
 
+    // waitpid() for this process
     int status;
     pid_t pid = waitpid(id, &status, WUNTRACED);
     if (pid != -1) {
@@ -183,16 +220,20 @@ void fg(char *job_id, job_list_t *list) {
             printf("[%d](%d) suspended by signal %d\n", get_job_jid(list, pid),
                    pid, WSTOPSIG(status));
         }
+
+        // remove it from job list when terminated by signal.
         if (WIFSIGNALED(status)) {
             printf("[%d](%d) terminated by signal %d\n", get_job_jid(list, id),
                    id, WTERMSIG(status));
             remove_job_pid(list, id);
         }
 
+        // remove it from job list when it exit normally.
         if (WIFEXITED(status)) {
             remove_job_pid(list, id);
         }
 
+        // give back the control to the parent. 
         if (tcsetpgrp(0, getpgrp()) == -1) {
             perror("tcsetpgrp");
         }
@@ -207,18 +248,24 @@ void fg(char *job_id, job_list_t *list) {
  */
 
 int main() {
-    // used for saving the value returned from read
+    // ignore the signals for the parent process
     signal(SIGINT, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);
     signal(SIGTTOU, SIG_IGN);
 
+    // used for saving the value returned from read
     ssize_t bytesRead;
+    // global variable job list
     job_list_t *j_list = init_job_list();
+    // get the value of jid
     int size_j = 0;
+    // store the child process id
     pid_t curr_child_pid;
+    // global variable status
     int status;
 
     while (1) {
+        // reap() everytime to keep track of all the background processes.
         reap(j_list);
 #ifdef PROMPT
         if (printf("33sh> ") < 0) {
@@ -259,6 +306,7 @@ int main() {
             }
         }
 
+        // get size of argv
         int size_argv = 0;
         for (int j = 0; argv[j] != NULL; j++) {
             size_argv++;
@@ -270,6 +318,7 @@ int main() {
             exit(0);
         }
 
+        // command cd
         if (strcmp(argv[0], "cd") == 0) {
             // no file
             if (argv[1] == NULL) {
@@ -313,13 +362,16 @@ int main() {
             continue;
         }
 
+        // command jobs
         else if (strcmp(argv[0], "jobs") == 0) {
             jobs(j_list);
             continue;
         }
 
+        // command bg
         else if (strcmp(argv[0], "bg") == 0) {
             char *second_arg = argv[1];
+            // check if second argument contains %
             if (second_arg[0] == 37) {
                 bg(&second_arg[1], j_list);
             } else {
@@ -328,8 +380,10 @@ int main() {
             continue;
         }
 
+        // command fg
         else if (strcmp(argv[0], "fg") == 0) {
             char *second_arg = argv[1];
+            // check if second argument contains %
             if (second_arg[0] == 37) {
                 fg(&second_arg[1], j_list);
             } else {
@@ -338,8 +392,10 @@ int main() {
             continue;
         }
 
+        // get the pid of the child.
         curr_child_pid = fork();
 
+        // identify a background process and add it to the job list.
         if (strcmp(argv[size_argv - 1], "&") == 0) {
             size_j += 1;
             add_job(j_list, size_j, curr_child_pid, RUNNING, argv[0]);
@@ -351,16 +407,20 @@ int main() {
                 exit(1);
             }
 
+            // print the jid and pid of the background process
             if (strcmp(argv[size_argv - 1], "&") == 0) {
                 argv[size_argv - 1] = NULL;
                 printf("[%d](%d)\n", size_j, getpid());
 
+            // if it is a foreground process, enable it to interact with terminal
             } else {
                 if (tcsetpgrp(0, getpgrp()) == -1) {
                     perror("tcsetpgrp");
                     exit(1);
                 }
             }
+
+            // set the signal handler to react with default behavior.
             signal(SIGINT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
             signal(SIGTTOU, SIG_DFL);
@@ -427,31 +487,35 @@ int main() {
             exit(1);
         }
 
-        // Parent Process continues
+        // wait for the foreground process
         if (strcmp(argv[size_argv - 1], "&") != 0) {
             pid_t pid = waitpid(curr_child_pid, &status, WUNTRACED);
             if (pid == -1) {
                 perror("wait");
                 continue;
             } else {
+                // foreground process suspended
                 if (WIFSTOPPED(status)) {
                     size_j += 1;
                     add_job(j_list, size_j, pid, STOPPED, argv[0]);
                     printf("[%d](%d) suspended by signal %d\n", size_j, pid,
                            WSTOPSIG(status));
                 }
+                // foreground process terminated by signal
                 if (WIFSIGNALED(status)) {
                     printf("[%d](%d) terminated by signal %d\n", size_j + 1,
                            pid, WTERMSIG(status));
                 }
             }
 
+            // give back the control to parent
             if (tcsetpgrp(0, getpgrp()) == -1) {
                 perror("tcsetpgrp");
                 continue;
             }
         }
     }
+    // cleanup job list before exit
     cleanup_job_list(j_list);
     return 0;
 }
