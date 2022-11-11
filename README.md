@@ -6,3 +6,5 @@ Our main function can be divided into 5 parts, from top to bottom. The first par
 2. Known bugs: N/A.
 
 3. Distribution of work:
+Together for functionality. Zixuan Guo responsible for annotation, Xilin Wang
+responsible for readme. 
